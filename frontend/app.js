@@ -5,6 +5,7 @@
   // ===== 状态 =====
   let currentMode = 'qa';
   let chatHistory = [];  // 当前会话历史 [{role, content}]
+  let currentSessionId = null;  // 当前会话 id（null = 未持久化的临时对话）
 
   // ===== DOM =====
   const $ = (sel) => document.querySelector(sel);
@@ -87,6 +88,11 @@
     if (!message.trim()) return;
     mode = mode || currentMode;
 
+    // 首条消息时，若无会话则新建持久化会话
+    if (!currentSessionId) {
+      await ensureSession(message, mode);
+    }
+
     addMessage('user', message);
     chatInput.value = '';
     autoResize();
@@ -124,11 +130,113 @@
       // 记录历史
       chatHistory.push({ role: 'user', content: message });
       chatHistory.push({ role: 'assistant', content: fullText });
+
+      // 持久化到后端
+      if (currentSessionId) {
+        persistMessages([{ role: 'user', content: message }, { role: 'assistant', content: fullText }]);
+      }
     } catch (e) {
       updateMessage(bubble, '⚠️ ' + e.message);
     } finally {
       sendBtn.disabled = false;
     }
+  }
+
+  // ===== 会话持久化 =====
+  async function ensureSession(firstMessage, mode) {
+    try {
+      const resp = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: mode, first_message: firstMessage })
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        currentSessionId = data.session.id;
+        loadConversationList();
+      }
+    } catch (e) {
+      // 创建失败不阻塞对话，只是不持久化
+    }
+  }
+
+  async function persistMessages(messages) {
+    if (!currentSessionId) return;
+    try {
+      await fetch('/api/conversations/' + currentSessionId + '/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: messages })
+      });
+      loadConversationList();
+    } catch (e) {}
+  }
+
+  async function loadConversationList() {
+    const itemsEl = $('#conv-list-items');
+    if (!itemsEl) return;
+    try {
+      const resp = await fetch('/api/conversations');
+      const data = await resp.json();
+      itemsEl.innerHTML = '';
+      if (!data.sessions || data.sessions.length === 0) {
+        itemsEl.innerHTML = '<div class="conv-empty">暂无历史对话</div>';
+        return;
+      }
+      data.sessions.forEach((s) => {
+        const item = document.createElement('div');
+        item.className = 'conv-item' + (s.id === currentSessionId ? ' active' : '');
+        item.innerHTML =
+          '<span class="conv-item-title">' + escapeHtml(s.title) + '</span>' +
+          '<button class="conv-item-del" title="删除">✕</button>';
+        item.querySelector('.conv-item-del').onclick = async (e) => {
+          e.stopPropagation();
+          if (!confirm('删除对话「' + s.title + '」？')) return;
+          await fetch('/api/conversations/' + s.id, { method: 'DELETE' });
+          if (s.id === currentSessionId) newConversation();
+          loadConversationList();
+        };
+        item.onclick = () => loadConversation(s.id);
+        itemsEl.appendChild(item);
+      });
+    } catch (e) {}
+  }
+
+  async function loadConversation(sessionId) {
+    try {
+      const resp = await fetch('/api/conversations/' + sessionId);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      currentSessionId = sessionId;
+      chatHistory = data.messages || [];
+      // 渲染到界面
+      chatMessages.innerHTML = '';
+      chatHistory.forEach((m) => {
+        addMessage(m.role, m.content, false);
+      });
+      if (chatHistory.length === 0) {
+        chatMessages.innerHTML = '<div class="welcome">' +
+          '<div class="welcome-icon">🐺</div>' +
+          '<h3>你好，我是 ShadowHunter 猎影</h3>' +
+          '<p>可以问我：挖矿木马怎么排查？这台服务器 CPU 占用高怎么办？收到钓鱼邮件怎么处置？</p>' +
+          '<div class="quick-prompts" id="quick-prompts"></div></div>';
+      }
+      loadConversationList();
+      // 高亮当前
+    } catch (e) {}
+  }
+
+  function newConversation() {
+    currentSessionId = null;
+    chatHistory = [];
+    chatMessages.innerHTML = '<div class="welcome">' +
+      '<div class="welcome-icon">🐺</div>' +
+      '<h3>你好，我是 ShadowHunter 猎影</h3>' +
+      '<p>可以问我：挖矿木马怎么排查？这台服务器 CPU 占用高怎么办？收到钓鱼邮件怎么处置？</p>' +
+      '<div class="quick-prompts" id="quick-prompts"></div></div>';
+    // 重新绑定快捷提示
+    bindQuickPrompts();
+    loadConversationList();
   }
 
   // ===== 报告生成（流式） =====
@@ -192,27 +300,7 @@
     chatSubtitle.textContent = titles[mode][1];
 
     // 快捷提示
-    if (mode === 'triage') {
-      quickPrompts.innerHTML = '';
-      ['服务器 CPU 占用 90%，外连矿池 IP 137.184.244.76',
-       'EDR 报了 webshell 告警，怎么排查',
-       '文件被加密成 .Elbie 后缀，怎么办'].forEach((q) => {
-        const chip = document.createElement('div');
-        chip.className = 'quick-chip';
-        chip.textContent = q;
-        chip.onclick = () => sendChat(q, 'triage');
-        quickPrompts.appendChild(chip);
-      });
-    } else if (mode === 'qa') {
-      quickPrompts.innerHTML = '';
-      ['挖矿木马怎么排查？', '收到钓鱼邮件怎么处置？', '数据库用户批量锁定是什么原因？'].forEach((q) => {
-        const chip = document.createElement('div');
-        chip.className = 'quick-chip';
-        chip.textContent = q;
-        chip.onclick = () => sendChat(q, 'qa');
-        quickPrompts.appendChild(chip);
-      });
-    }
+    bindQuickPrompts(mode);
 
     if (mode === 'kb') loadKnowledge();
     if (mode === 'settings') loadSettings();
@@ -223,6 +311,27 @@
         loadSavedConnections();
       }, 50);
     }
+  }
+
+  // 绑定快捷提示（抽出独立函数，便于新对话后重新绑定）
+  function bindQuickPrompts(mode) {
+    mode = mode || 'qa';
+    const container = $('#quick-prompts');
+    if (!container) return;
+    container.innerHTML = '';
+    const prompts = mode === 'triage'
+      ? ['服务器 CPU 占用 90%，外连矿池 IP 137.184.244.76',
+         'EDR 报了 webshell 告警，怎么排查',
+         '文件被加密成 .Elbie 后缀，怎么办']
+      : ['挖矿木马怎么排查？', '收到钓鱼邮件怎么处置？', '数据库用户批量锁定是什么原因？'];
+    const m = mode === 'triage' ? 'triage' : 'qa';
+    prompts.forEach((q) => {
+      const chip = document.createElement('div');
+      chip.className = 'quick-chip';
+      chip.textContent = q;
+      chip.onclick = () => sendChat(q, m);
+      container.appendChild(chip);
+    });
   }
 
   // ===== 知识库加载 =====
@@ -913,7 +1022,16 @@
 
   // ===== 事件绑定 =====
   document.querySelectorAll('.nav-item').forEach((el) => {
-    el.addEventListener('click', () => switchMode(el.dataset.mode));
+    el.addEventListener('click', () => {
+      if (el.dataset.mode) switchMode(el.dataset.mode);
+    });
+  });
+
+  // 新对话按钮
+  const newChatBtn = $('#nav-new-chat');
+  if (newChatBtn) newChatBtn.addEventListener('click', () => {
+    newConversation();
+    switchMode('qa');
   });
 
   sendBtn.addEventListener('click', () => sendChat(chatInput.value, currentMode));
@@ -963,5 +1081,6 @@
 
   // ===== 初始化 =====
   switchMode('qa');
+  loadConversationList();
   checkHealth();
 })();

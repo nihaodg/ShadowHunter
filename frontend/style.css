@@ -58,7 +58,12 @@ body {
 .logo-title { color: #fff; font-size: 15px; font-weight: 600; }
 .logo-sub { color: var(--sidebar-text); font-size: 11px; margin-top: 2px; }
 
-.nav { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.nav { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.nav-new-chat {
+  border: 1px dashed rgba(255,255,255,0.2) !important;
+  margin-bottom: 6px;
+}
+.nav-new-chat:hover { border-color: var(--accent) !important; background: rgba(59,130,246,0.1) !important; }
 
 .nav-item {
   display: flex; align-items: center; gap: 12px;
@@ -82,6 +87,39 @@ body {
   color: var(--sidebar-text);
   font-size: 12px;
 }
+
+/* ===== 历史对话列表 ===== */
+.conv-list {
+  padding: 8px 12px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  overflow-y: auto;
+  max-height: 40%;
+  flex-shrink: 0;
+}
+.conv-list-title {
+  font-size: 11px; color: var(--sidebar-text);
+  padding: 8px 6px 6px; font-weight: 600; letter-spacing: 0.5px;
+}
+.conv-list-items { display: flex; flex-direction: column; gap: 2px; }
+.conv-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+  color: var(--sidebar-text); font-size: 13px;
+  transition: all 0.12s;
+}
+.conv-item:hover { background: rgba(255,255,255,0.06); color: #e5e7eb; }
+.conv-item.active { background: var(--sidebar-active); color: #fff; }
+.conv-item-title {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.conv-item-del {
+  border: none; background: none; color: #666; cursor: pointer;
+  font-size: 13px; padding: 0 2px; border-radius: 4px; opacity: 0;
+  transition: opacity 0.12s; flex-shrink: 0;
+}
+.conv-item:hover .conv-item-del { opacity: 1; }
+.conv-item-del:hover { color: #ff5f57; }
+.conv-empty { color: #555; font-size: 12px; padding: 6px; text-align: center; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; }
 .status-dot.ok { background: var(--success); }
 .status-dot.bad { background: var(--danger); }

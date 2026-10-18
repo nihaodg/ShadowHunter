@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import prompts, settings, ssh_manager, file_parser
+from . import prompts, settings, ssh_manager, file_parser, conversation_store
 from .claude_client import client as claude
 from .knowledge_base_loader import kb
 
@@ -61,6 +61,20 @@ class SSHConnectionSave(BaseModel):
     port: int = 22
     username: str
     password: str
+
+
+class ConversationCreate(BaseModel):
+    mode: str = "qa"
+    title: str = ""
+    first_message: str = ""
+
+
+class ConversationSave(BaseModel):
+    messages: list[dict] = []    # [{role, content}]
+
+
+class ConversationRename(BaseModel):
+    title: str
 
 
 class DistillRequest(BaseModel):
@@ -141,6 +155,54 @@ async def update_settings(req: SettingsUpdateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True, "config": settings.public_config(settings.load_config())}
+
+
+# ============ 对话历史 ============
+@app.get("/api/conversations")
+async def list_conversations():
+    """列出所有会话。"""
+    return {"sessions": conversation_store.list_sessions()}
+
+
+@app.post("/api/conversations")
+async def create_conversation(req: ConversationCreate):
+    """新建会话。"""
+    sess = conversation_store.create_session(
+        mode=req.mode, title=req.title, first_message=req.first_message)
+    return {"ok": True, "session": sess}
+
+
+@app.get("/api/conversations/{session_id}")
+async def get_conversation(session_id: str):
+    """获取会话详情（含消息）。"""
+    sess = conversation_store.get_session(session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return sess
+
+
+@app.post("/api/conversations/{session_id}/messages")
+async def save_messages(session_id: str, req: ConversationSave):
+    """追加消息到会话。"""
+    if conversation_store.append_messages(session_id, req.messages):
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="会话不存在")
+
+
+@app.patch("/api/conversations/{session_id}")
+async def rename_conversation(session_id: str, req: ConversationRename):
+    """重命名会话。"""
+    if conversation_store.rename_session(session_id, req.title):
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="会话不存在")
+
+
+@app.delete("/api/conversations/{session_id}")
+async def delete_conversation(session_id: str):
+    """删除会话。"""
+    if conversation_store.delete_session(session_id):
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="会话不存在")
 
 
 # ============ 知识库 ============

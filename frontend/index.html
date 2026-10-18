@@ -23,7 +23,11 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-mode="qa">
+        <button class="nav-item nav-new-chat" id="nav-new-chat">
+          <span class="nav-icon">＋</span>
+          <span>新对话</span>
+        </button>
+        <button class="nav-item" data-mode="qa">
           <span class="nav-icon">💬</span>
           <span>智能问答</span>
         </button>
@@ -48,6 +52,11 @@
           <span>设置</span>
         </button>
       </nav>
+
+      <div class="conv-list" id="conv-list">
+        <div class="conv-list-title">历史对话</div>
+        <div class="conv-list-items" id="conv-list-items"></div>
+      </div>
 
       <div class="sidebar-footer">
         <div class="status-dot" id="status-dot"></div>
