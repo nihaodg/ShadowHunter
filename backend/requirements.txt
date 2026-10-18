@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+anthropic>=0.40
+openai>=1.30
+paramiko>=3.0
+python-docx>=1.1
+pydantic>=2.0

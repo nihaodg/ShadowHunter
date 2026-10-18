@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShadowHunter 猎影 · 应急响应 AI 助手</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- xterm.js 终端（处理 ANSI 转义 + 中文） -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="logo-icon">🐺</div>
+        <div class="logo-text">
+          <div class="logo-title">ShadowHunter</div>
+          <div class="logo-sub">猎影 · 应急响应助手</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-mode="qa">
+          <span class="nav-icon">💬</span>
+          <span>智能问答</span>
+        </button>
+        <button class="nav-item" data-mode="triage">
+          <span class="nav-icon">🎯</span>
+          <span>智能分诊</span>
+        </button>
+        <button class="nav-item" data-mode="report">
+          <span class="nav-icon">📄</span>
+          <span>报告生成</span>
+        </button>
+        <button class="nav-item" data-mode="kb">
+          <span class="nav-icon">📚</span>
+          <span>知识库</span>
+        </button>
+        <button class="nav-item" data-mode="ssh">
+          <span class="nav-icon">🖥️</span>
+          <span>SSH 终端</span>
+        </button>
+        <button class="nav-item" data-mode="settings">
+          <span class="nav-icon">⚙️</span>
+          <span>设置</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">检测中…</span>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main">
+      <!-- 聊天面板（qa / triage） -->
+      <section class="panel" id="panel-chat">
+        <div class="chat-header">
+          <h2 id="chat-title">应急响应智能问答</h2>
+          <p id="chat-subtitle">基于 80+ 份真实应急响应报告蒸馏的知识库，回答应急响应问题</p>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <div class="welcome">
+            <div class="welcome-icon">🛡️</div>
+            <h3>你好，我是 ShadowHunter 猎影</h3>
+            <p>可以问我：挖矿木马怎么排查？这台服务器 CPU 占用高怎么办？收到钓鱼邮件怎么处置？</p>
+            <div class="quick-prompts" id="quick-prompts"></div>
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="chat-input-box">
+            <textarea id="chat-input" rows="1" placeholder="输入你的问题或告警现象…（Enter 发送，Shift+Enter 换行）"></textarea>
+            <button class="upload-btn" id="upload-btn" title="上传文件分析（docx/md/txt）">📎</button>
+            <input type="file" id="file-input" accept=".docx,.doc,.md,.txt,.log,.markdown,.text" hidden>
+            <button class="send-btn" id="send-btn" title="发送">➤</button>
+          </div>
+          <div class="input-actions">
+            <button class="ghost-btn distill-btn" id="distill-btn">🧠 沉淀知识</button>
+            <span class="input-hint">回答基于 Claude + 应急响应知识库 · 处置类建议请结合现场确认</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 报告面板 -->
+      <section class="panel hidden" id="panel-report">
+        <div class="chat-header">
+          <h2>应急响应报告生成</h2>
+          <p>粘贴排查结果 / 证据 / 现象，一键生成标准格式报告（六段结构）</p>
+        </div>
+
+        <div class="report-layout">
+          <div class="report-input">
+            <div class="report-input-header">
+              <span>输入排查结果 / 证据</span>
+              <button class="ghost-btn" id="report-clear">清空</button>
+            </div>
+            <textarea id="report-input" placeholder="粘贴排查结果，例如：&#10;&#10;主机 10.21.9.60，Windows，发现进程 xmrig 占用 CPU 90%，外连矿池 137.184.244.76，计划任务中发现恶意项…"></textarea>
+            <button class="primary-btn" id="report-generate">生成报告</button>
+          </div>
+
+          <div class="report-output">
+            <div class="report-output-header">
+              <span>生成结果</span>
+              <button class="ghost-btn" id="report-copy">复制</button>
+              <button class="ghost-btn" id="report-download">下载 .md</button>
+            </div>
+            <div class="report-content markdown" id="report-content">
+              <div class="empty-state">生成的报告会显示在这里</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 知识库面板 -->
+      <section class="panel hidden" id="panel-kb">
+        <div class="chat-header">
+          <h2>知识库</h2>
+          <p>已沉淀的应急响应知识条目，支持自己添加 / 编辑 / 删除</p>
+        </div>
+        <div class="kb-toolbar">
+          <button class="primary-btn kb-add-btn" id="kb-add-btn">＋ 新建条目</button>
+          <span class="kb-hint">内置条目（skill 蒸馏）只读，用户条目可增删改</span>
+        </div>
+        <div class="kb-list" id="kb-list">
+          <div class="empty-state">加载中…</div>
+        </div>
+      </section>
+
+      <!-- SSH 终端面板 -->
+      <section class="panel hidden" id="panel-ssh">
+        <div class="chat-header">
+          <h2>SSH 终端</h2>
+          <p>连接可能被攻陷的服务器，交互式上机排查 · 支持多标签页和历史连接</p>
+        </div>
+        <div class="ssh-layout">
+          <div class="ssh-sidebar">
+            <div class="ssh-connect-form">
+              <div class="field">
+                <label>连接名称（可选，保存时用）</label>
+                <input type="text" id="ssh-name" placeholder="如：生产服务器">
+              </div>
+              <div class="field">
+                <label>主机地址（host）</label>
+                <input type="text" id="ssh-host" placeholder="192.168.1.10">
+              </div>
+              <div class="field">
+                <label>端口</label>
+                <input type="number" id="ssh-port" value="22">
+              </div>
+              <div class="field">
+                <label>用户名</label>
+                <input type="text" id="ssh-user" placeholder="root">
+              </div>
+              <div class="field">
+                <label>密码</label>
+                <input type="password" id="ssh-pass" placeholder="密码">
+              </div>
+              <div class="ssh-form-actions">
+                <button class="primary-btn" id="ssh-connect-btn">连接</button>
+                <button class="save-btn" id="ssh-save-btn">💾 保存</button>
+              </div>
+              <div class="ssh-status" id="ssh-status">未连接</div>
+            </div>
+            <div class="ssh-saved" id="ssh-saved">
+              <div class="ssh-saved-title">历史连接</div>
+              <div class="ssh-saved-list" id="ssh-saved-list"></div>
+            </div>
+          </div>
+          <div class="ssh-terminal-wrap">
+            <div class="mac-terminal">
+              <div class="mac-titlebar">
+                <div class="mac-dots">
+                  <span class="dot dot-red"></span>
+                  <span class="dot dot-yellow"></span>
+                  <span class="dot dot-green"></span>
+                </div>
+                <div class="mac-tabs" id="ssh-tabs"></div>
+                <button class="mac-new-tab" id="ssh-new-tab" title="新建标签">＋</button>
+              </div>
+              <div class="ssh-terminals" id="ssh-terminals"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 设置面板 -->
+      <section class="panel hidden" id="panel-settings">
+        <div class="chat-header">
+          <h2>设置</h2>
+          <p>配置 AI 服务商与 API Key（御三家 + 自定义），存服务端 config.json</p>
+        </div>
+        <div class="settings-wrap" id="settings-wrap">
+          <div class="empty-state">加载中…</div>
+        </div>
+      </section>
+
+      <!-- 知识编辑弹窗 -->
+      <div class="modal hidden" id="kb-modal">
+        <div class="modal-box">
+          <div class="modal-head">
+            <span id="kb-modal-title">编辑知识条目</span>
+            <button class="modal-close" id="kb-modal-close">✕</button>
+          </div>
+          <div class="field">
+            <label>条目名（.md）</label>
+            <input type="text" id="kb-name-input" placeholder="如：挖矿木马排查经验">
+          </div>
+          <div class="field">
+            <label>内容（markdown）</label>
+            <textarea id="kb-content-input" rows="18" placeholder="支持 markdown 格式"></textarea>
+          </div>
+          <div class="modal-actions">
+            <button class="ghost-btn" id="kb-modal-cancel">取消</button>
+            <button class="primary-btn" id="kb-modal-save">保存</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 沉淀知识弹窗 -->
+      <div class="modal hidden" id="distill-modal">
+        <div class="modal-box">
+          <div class="modal-head">
+            <span>AI 沉淀知识</span>
+            <button class="modal-close" id="distill-close">✕</button>
+          </div>
+          <div class="field">
+            <label>条目名（可选，留空让 AI 起名）</label>
+            <input type="text" id="distill-name" placeholder="如：某挖矿事件处置经验">
+          </div>
+          <div class="field">
+            <label>待沉淀的内容（对话结论 / 排查发现 / 经验）</label>
+            <textarea id="distill-content" rows="8" placeholder="粘贴要沉淀的内容，或留空自动总结当前对话"></textarea>
+          </div>
+          <div class="modal-actions">
+            <button class="ghost-btn" id="distill-cancel">取消</button>
+            <button class="primary-btn" id="distill-generate">生成草稿</button>
+          </div>
+          <div class="distill-result hidden" id="distill-result">
+            <div class="field">
+              <label>AI 生成的草稿（可编辑）</label>
+              <textarea id="distill-draft" rows="16"></textarea>
+            </div>
+            <div class="modal-actions">
+              <button class="primary-btn" id="distill-save">保存到知识库</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

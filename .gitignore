@@ -1,0 +1,22 @@
+# 敏感信息 / 凭据（切勿提交）
+backend/config.json
+backend/ssh_connections.json
+backend/.env
+.env
+*.env
+
+# 用户数据
+backend/user_kb/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 测试 / 临时
+*.log
+.DS_Store
+Thumbs.db
